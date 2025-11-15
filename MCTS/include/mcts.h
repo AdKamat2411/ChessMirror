@@ -74,6 +74,9 @@ class MCTS_tree {
     MCTS_node *root;
     NeuralNetwork* nn_;  // Neural network for evaluation
     double cpuct_;       // PUCT exploration constant
+    // Debug stats
+    double last_search_time_;  // Time taken for last search (seconds)
+    unsigned int last_iterations_;  // Number of iterations in last search
 public:
     MCTS_tree(MCTS_state *starting_state, NeuralNetwork* nn = nullptr, double cpuct = 1.0);
     ~MCTS_tree();
@@ -87,6 +90,8 @@ public:
     MCTS_node* get_root() const { return root; }  // For debugging
     void set_neural_network(NeuralNetwork* nn) { nn_ = nn; }
     void set_cpuct(double cpuct) { cpuct_ = cpuct; }
+    double get_last_search_time() const { return last_search_time_; }
+    unsigned int get_last_iterations() const { return last_iterations_; }
 };
 
 

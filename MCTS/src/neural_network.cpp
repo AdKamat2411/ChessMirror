@@ -197,7 +197,7 @@ bool NeuralNetwork::load_model(const std::string& model_path) {
         
         // Verify model loaded successfully
         loaded_ = true;
-        std::cout << "Successfully loaded model from: " << model_path << std::endl;
+        // Model loaded successfully (removed debug output for performance)
         return true;
     }
     catch (const c10::Error& e) {

@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <ctime>
+#include <chrono>
 #include <algorithm>
 #include "../include/mcts.h"
 #include "../include/neural_network.h"
@@ -98,18 +99,6 @@ double MCTS_node::evaluate(NeuralNetwork* nn) {
                        raw_nn_value = raw_network_value;  // Store raw value from model (already in [-1, +1] range)
                        nn_value = network_value;  // Same as raw (model already outputs tanh'd values)
                 has_nn_evaluation = true;
-                // Debug: log root node policy (ALWAYS, not just when parent is null, to catch root)
-                static bool root_logged = false;
-                if (parent == nullptr && !root_logged) {
-                    cerr << "[DEBUG] ===== ROOT NODE EVALUATED =====" << endl;
-                    cerr << "[DEBUG] NN Value (from root's perspective, white to move): " << network_value << endl;
-                    cerr << "[DEBUG] Policy map size: " << policy_map.size() << " entries" << endl;
-                    for (const auto& [move, prob] : policy_map) {
-                        cerr << "[DEBUG]   " << move << ": " << prob << endl;
-                    }
-                    cerr << "[DEBUG] ================================" << endl;
-                    root_logged = true;
-                }
                 return nn_value;
             } else {
                 cerr << "WARNING: Neural network prediction failed for position. Falling back to heuristic rollout." << endl;
@@ -201,12 +190,6 @@ MCTS_node *MCTS_node::select_best_child(double cpuct) const {
         
         // DEBUG: Log all Q-values and PUCT scores for root node
         bool is_root = (parent == nullptr);
-        if (is_root) {
-            cerr << "[DEBUG] ===== SELECTING BEST MOVE FROM ROOT =====" << endl;
-            cerr << "[DEBUG] Parent visits (N_s): " << number_of_simulations << endl;
-            cerr << "[DEBUG] CPUCT: " << cpuct << endl;
-            cerr << "[DEBUG] Children count: " << children->size() << endl;
-        }
         
         // Store all scores for logging
         vector<pair<string, tuple<double, double, double, double>>> scores; // move, (Q, P, N_a, puct_score)
@@ -258,11 +241,6 @@ MCTS_node *MCTS_node::select_best_child(double cpuct) const {
             
             if (is_root) {
                 scores.push_back(make_pair(move_uci, make_tuple(Q, P_original, (double)N_a, puct_score)));
-                // Debug: log child's raw score for first few moves
-                if (N_a > 0 && scores.size() <= 3) {
-                    cerr << "[DEBUG] Child " << move_uci << ": score=" << child->score 
-                         << ", visits=" << N_a << ", Q=" << Q << endl;
-                }
             }
             
             if (puct_score > max) {
@@ -271,37 +249,7 @@ MCTS_node *MCTS_node::select_best_child(double cpuct) const {
             }
         }
         
-        // DEBUG: Print all scores for root node
-        if (is_root) {
-            // Sort by PUCT score descending
-            sort(scores.begin(), scores.end(), [](const auto& a, const auto& b) {
-                return get<3>(a.second) > get<3>(b.second);
-            });
-            cerr << "[DEBUG] Move    |    Q    |    P    |  N_a  | PUCT Score" << endl;
-            cerr << "[DEBUG] -------|---------|---------|-------|-----------" << endl;
-            for (const auto& [move, vals] : scores) {
-                double Q = get<0>(vals);
-                double P = get<1>(vals);
-                double N_a = get<2>(vals);
-                double puct = get<3>(vals);
-                cerr << "[DEBUG] " << setw(6) << move << " | " 
-                     << setw(7) << fixed << setprecision(4) << Q << " | "
-                     << setw(7) << fixed << setprecision(4) << P << " | "
-                     << setw(5) << (unsigned int)N_a << " | "
-                     << setw(10) << fixed << setprecision(4) << puct;
-                if (move == "e2e4") {
-                    cerr << " <-- TARGET";
-                }
-                cerr << endl;
-            }
-            if (argmax && argmax->move) {
-                Chess_move* best_move = dynamic_cast<Chess_move*>(const_cast<MCTS_move*>(argmax->move));
-                if (best_move) {
-                    cerr << "[DEBUG] Selected: " << best_move->sprint() << " (PUCT=" << max << ")" << endl;
-                }
-            }
-            cerr << "[DEBUG] ============================================" << endl;
-        }
+        // Don't print debug here - it will be printed in genmove() before final selection
         return argmax;
     }
 }
@@ -350,7 +298,7 @@ MCTS_node *MCTS_tree::select(double c) {
 }
 
 MCTS_tree::MCTS_tree(MCTS_state *starting_state, NeuralNetwork* nn, double cpuct)
-    : nn_(nn), cpuct_(cpuct) {
+    : nn_(nn), cpuct_(cpuct), last_search_time_(0.0), last_iterations_(0) {
     assert(starting_state != NULL);
     root = new MCTS_node(NULL, starting_state, NULL);
 }
@@ -397,12 +345,10 @@ double MCTS_node::get_prior(const MCTS_move* move) const {
 
 void MCTS_tree::grow_tree(int max_iter, double max_time_in_seconds) {
     MCTS_node *node;
-    double dt;
-    #ifdef DEBUG
-    cout << "Growing tree..." << endl;
-    #endif
-    time_t start_t, now_t;
-    time(&start_t);
+    auto start_time = chrono::high_resolution_clock::now();
+    unsigned int iterations = 0;
+    const unsigned int TIME_CHECK_INTERVAL = 100; // Check time every 100 iterations
+    
     for (int i = 0 ; i < max_iter ; i++){
         node = select();
         MCTS_node* target = node;
@@ -423,21 +369,22 @@ void MCTS_tree::grow_tree(int max_iter, double max_time_in_seconds) {
         }
 
         target->backpropagate_value(value);
+        iterations++;
 
-        time(&now_t);
-        dt = difftime(now_t, start_t);
-        if (dt > max_time_in_seconds) {
-            #ifdef DEBUG
-            cout << "Early stopping: Made " << (i + 1) << " iterations in " << dt << " seconds." << endl;
-            #endif
-            break;
+        // Check time limit less frequently for better performance
+        if (iterations % TIME_CHECK_INTERVAL == 0 || iterations == max_iter) {
+            auto current_time = chrono::high_resolution_clock::now();
+            double elapsed = chrono::duration<double>(current_time - start_time).count();
+            if (elapsed > max_time_in_seconds) {
+                break;
+            }
         }
     }
-    #ifdef DEBUG
-    time(&now_t);
-    dt = difftime(now_t, start_t);
-    cout << "Finished in " << dt << " seconds." << endl;
-    #endif
+    
+    // Store stats for debug output
+    auto end_time = chrono::high_resolution_clock::now();
+    last_search_time_ = chrono::duration<double>(end_time - start_time).count();
+    last_iterations_ = iterations;
 }
 
 unsigned int MCTS_tree::get_size() const {
@@ -517,6 +464,16 @@ MCTS_node *MCTS_tree::select_best_child() {
     // Use cpuct_ if NN is available, otherwise use UCT constant (1.41) for exploration
     // This ensures exploration even without NN priors
     double exploration = (nn_ != nullptr) ? cpuct_ : 1.41;
+    
+    // Print only essential MCTS performance stats
+    double time_taken = last_search_time_;
+    unsigned int iterations = last_iterations_;
+    double positions_per_sec = (time_taken > 0.0) ? iterations / time_taken : 0.0;
+    
+    cerr << "[DEBUG] Iterations: " << iterations << endl;
+    cerr << "[DEBUG] Time: " << fixed << setprecision(3) << time_taken << "s" << endl;
+    cerr << "[DEBUG] Positions/s: " << fixed << setprecision(0) << positions_per_sec << endl;
+    
     return root->select_best_child(exploration);
 }
 
@@ -537,15 +494,7 @@ const MCTS_move *MCTS_agent::genmove(const MCTS_move *enemy_move) {
     if (tree->get_current_state()->is_terminal()) {
         return NULL;
     }
-    #ifdef DEBUG
-    cout << "___ DEBUG ______________________" << endl
-         << "Growing tree..." << endl;
-    #endif
     tree->grow_tree(max_iter, max_seconds);
-    #ifdef DEBUG
-    cout << "Tree size: " << tree->get_size() << endl
-         << "________________________________" << endl;
-    #endif
     MCTS_node *best_child = tree->select_best_child();
     if (best_child == NULL) {
         cerr << "Warning: Tree root has no children! Possibly terminal node!" << endl;

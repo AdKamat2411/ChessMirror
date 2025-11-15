@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 
-#define NUMBER_OF_THREADS 4                  // default number of threads
+#define NUMBER_OF_THREADS 8                  // default number of threads
 #define NOTAG -1
 
 

@@ -82,6 +82,17 @@ else
 	@exit 1
 endif
 
+NNValue: Chess.o neural_network.o Chess/nn_value.cpp
+ifeq ($(LIBTORCH_AVAILABLE),yes)
+	g++ -o nn_value $(FLAGS) -I. -I$(TORCH_INCLUDE) -I$(TORCH_INCLUDE)/torch/csrc/api/include \
+		Chess/nn_value.cpp Chess.o neural_network.o \
+		-L$(TORCH_LIB) -ltorch -ltorch_cpu -lc10 \
+		-Wl,-rpath,$(TORCH_LIB)
+else
+	@echo "Error: Cannot build without libtorch"
+	@exit 1
+endif
+
 LichessBot: mcts.o JobScheduler.o Chess.o neural_network.o Chess/lichess_bot.cpp
 ifeq ($(LIBTORCH_AVAILABLE),yes)
 	g++ -o lichess_bot $(FLAGS) -I. -I$(TORCH_INCLUDE) -I$(TORCH_INCLUDE)/torch/csrc/api/include \
@@ -94,8 +105,19 @@ else
 	@exit 1
 endif
 
+Bridge: mcts.o JobScheduler.o Chess.o neural_network.o Chess/mcts_bridge.cpp
+ifeq ($(LIBTORCH_AVAILABLE),yes)
+	g++ -o mcts_bridge $(FLAGS) -I. -I$(TORCH_INCLUDE) -I$(TORCH_INCLUDE)/torch/csrc/api/include \
+		Chess/mcts_bridge.cpp Chess.o $(COMMON_OBJ) \
+		-L$(TORCH_LIB) -ltorch -ltorch_cpu -lc10 \
+		-Wl,-rpath,$(TORCH_LIB)
+else
+	@echo "Error: Cannot build without libtorch"
+	@exit 1
+endif
+
 clean:
-	rm -f *.o $(CHESS_EXE) chess_play chess_example nn_test lichess_bot
+	rm -f *.o $(CHESS_EXE) chess_play chess_example nn_test nn_value lichess_bot mcts_bridge
 
 .PHONY: all clean Chess
 
