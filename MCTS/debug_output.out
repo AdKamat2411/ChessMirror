@@ -1,0 +1,28 @@
+=== MCTS Chess Engine - Interactive Mode ===
+Config: 5000 iterations or 2 seconds per move
+CPUCT: 2
+=============================================
+
+Loading neural network from: ../chess18_conservative_fixed_ts.pt
+Error loading model: open file failed because of errno 2 on fopen: No such file or directory, file path: ../chess18_conservative_fixed_ts.pt
+Exception raised from RAIIFile at /Users/runner/work/pytorch/pytorch/pytorch/caffe2/serialize/file_adapter.cc:31 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>) + 56 (0x100c74020 in libc10.dylib)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&) + 140 (0x100c70eb4 in libc10.dylib)
+frame #2: caffe2::serialize::FileAdapter::RAIIFile::RAIIFile(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&) + 220 (0x1100ed678 in libtorch_cpu.dylib)
+frame #3: caffe2::serialize::FileAdapter::FileAdapter(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&) + 48 (0x1100ed970 in libtorch_cpu.dylib)
+frame #4: caffe2::serialize::PyTorchStreamReader::PyTorchStreamReader(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&) + 100 (0x1100e55d0 in libtorch_cpu.dylib)
+frame #5: torch::jit::import_ir_module(std::__1::shared_ptr<torch::jit::CompilationUnit>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, std::__1::optional<c10::Device>, std::__1::unordered_map<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::hash<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>, std::__1::equal_to<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>, std::__1::allocator<std::__1::pair<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>>>&, bool, bool) + 492 (0x111a6c988 in libtorch_cpu.dylib)
+frame #6: torch::jit::import_ir_module(std::__1::shared_ptr<torch::jit::CompilationUnit>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, std::__1::optional<c10::Device>, bool) + 68 (0x111a6c6e4 in libtorch_cpu.dylib)
+frame #7: torch::jit::load(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, std::__1::optional<c10::Device>, bool) + 144 (0x111a6d344 in libtorch_cpu.dylib)
+frame #8: NeuralNetwork::load_model(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&) + 48 (0x100591460 in chess_play)
+frame #9: main + 908 (0x100578878 in chess_play)
+frame #10: start + 2224 (0x18a76d058 in dyld)
+
+Warning: Failed to load neural network. Falling back to heuristic rollouts.
+
+Enter starting FEN (or press Enter for default starting position): Using FEN: clear
+
+Choose your color:
+1. White (you move first)
+2. Black (engine moves first)
+Enter choice (1 or 2): 
