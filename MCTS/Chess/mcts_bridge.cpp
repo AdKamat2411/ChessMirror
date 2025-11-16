@@ -11,6 +11,8 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
 
 using namespace std;
 using namespace chess;
@@ -48,7 +50,10 @@ int main(int argc, char* argv[]) {
     // Redirect all debug/info output to stderr, only move goes to stdout
     // This allows Python to cleanly capture just the move
     
+    auto total_start = chrono::high_resolution_clock::now();
+    
     // Load neural network
+    auto load_start = chrono::high_resolution_clock::now();
     NeuralNetwork* nn = new NeuralNetwork();
     bool nn_loaded = false;
     if (!model_path.empty() && model_path != "none") {
@@ -58,8 +63,10 @@ int main(int argc, char* argv[]) {
             delete nn;
             return 1;
         }
-        // Model loaded (removed debug output for performance)
     }
+    auto load_end = chrono::high_resolution_clock::now();
+    double load_time = chrono::duration<double>(load_end - load_start).count();
+    cerr << "[TIMING] Model load: " << fixed << setprecision(3) << load_time << "s" << endl;
     
     // Create initial state from FEN
     Chess_state* initial_state = new Chess_state(fen);
@@ -74,7 +81,15 @@ int main(int argc, char* argv[]) {
     );
     
     // Generate move
+    auto search_start = chrono::high_resolution_clock::now();
     const MCTS_move* engine_move = engine->genmove(nullptr);
+    auto search_end = chrono::high_resolution_clock::now();
+    double search_time = chrono::duration<double>(search_end - search_start).count();
+    cerr << "[TIMING] MCTS search: " << fixed << setprecision(3) << search_time << "s" << endl;
+    
+    auto total_end = chrono::high_resolution_clock::now();
+    double total_time = chrono::duration<double>(total_end - total_start).count();
+    cerr << "[TIMING] Total: " << fixed << setprecision(3) << total_time << "s" << endl;
     
     if (!engine_move) {
         cerr << "ERROR: Engine returned no move!" << endl;
