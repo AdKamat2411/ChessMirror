@@ -17,11 +17,13 @@ using namespace std;
 /*** MCTS NODE ***/
 MCTS_node::MCTS_node(MCTS_node *parent, MCTS_state *state, const MCTS_move *move)
         : parent(parent), state(state), move(move), score(0.0), number_of_simulations(0), size(0),
-          nn_value(0.0), raw_nn_value(0.0), has_nn_evaluation(false) {
+          nn_value(0.0), raw_nn_value(0.0), has_nn_evaluation(false), chess_state_cache_(nullptr) {
     children = new vector<MCTS_node *>();
     children->reserve(STARTING_NUMBER_OF_CHILDREN);
     untried_actions = state->actions_to_try();
     terminal = state->is_terminal();
+    // Cache Chess_state* cast result for performance
+    chess_state_cache_ = dynamic_cast<Chess_state*>(state);
 }
 
 MCTS_node::~MCTS_node() {
@@ -60,7 +62,8 @@ double MCTS_node::evaluate(NeuralNetwork* nn) {
     double value = 0.0;  // Default to draw (0.0 in [-1, +1] range)
 
     if (is_terminal()) {
-        Chess_state* chess_state = dynamic_cast<Chess_state*>(state);
+        // Use cached cast result
+        Chess_state* chess_state = chess_state_cache_;
         if (chess_state) {
             auto [reason, result] = chess_state->get_board().isGameOver();
             // Return value in [-1, +1] range from current player's perspective
@@ -89,7 +92,8 @@ double MCTS_node::evaluate(NeuralNetwork* nn) {
     }
 
     if (nn != nullptr) {
-        Chess_state* chess_state = dynamic_cast<Chess_state*>(state);
+        // Use cached cast result
+        Chess_state* chess_state = chess_state_cache_;
         if (chess_state) {
             map<string, double> policy_map;
             double network_value;
@@ -208,10 +212,9 @@ MCTS_node *MCTS_node::select_best_child(double cpuct) const {
             double P = 0.0;
             string move_uci = "NULL";
             if (child->move != nullptr) {
-                Chess_move* chess_move = dynamic_cast<Chess_move*>(const_cast<MCTS_move*>(child->move));
-                if (chess_move) {
-                    move_uci = chess_move->sprint();
-                }
+                // Optimize: use static_cast since we know Chess_move is the only implementation
+                const Chess_move* chess_move = static_cast<const Chess_move*>(child->move);
+                move_uci = chess_move->sprint();
                 P = get_prior(child->move);
             }
             // If no prior found, use uniform (1/num_children)
@@ -315,11 +318,8 @@ double MCTS_node::get_prior(const MCTS_move* move) const {
         return 0.0;
     }
     
-    // Convert move to UCI string
-    Chess_move* chess_move = dynamic_cast<Chess_move*>(const_cast<MCTS_move*>(move));
-    if (!chess_move) {
-        return 0.0;
-    }
+    // Optimize: use static_cast since we know Chess_move is the only implementation
+    const Chess_move* chess_move = static_cast<const Chess_move*>(move);
     
     string move_uci = chess_move->sprint();
     
@@ -347,7 +347,9 @@ void MCTS_tree::grow_tree(int max_iter, double max_time_in_seconds) {
     MCTS_node *node;
     auto start_time = chrono::high_resolution_clock::now();
     unsigned int iterations = 0;
-    const unsigned int TIME_CHECK_INTERVAL = 100; // Check time every 100 iterations
+    // Check time more frequently to respect time limits better
+    // Use adaptive checking: more frequent early on, less frequent later
+    const unsigned int TIME_CHECK_INTERVAL = 10; // Check every 10 iterations
     
     for (int i = 0 ; i < max_iter ; i++){
         node = select();
@@ -371,7 +373,8 @@ void MCTS_tree::grow_tree(int max_iter, double max_time_in_seconds) {
         target->backpropagate_value(value);
         iterations++;
 
-        // Check time limit less frequently for better performance
+        // Check time limit more frequently to respect time constraints
+        // Time check is very cheap, so checking every 10 iterations is fine
         if (iterations % TIME_CHECK_INTERVAL == 0 || iterations == max_iter) {
             auto current_time = chrono::high_resolution_clock::now();
             double elapsed = chrono::duration<double>(current_time - start_time).count();

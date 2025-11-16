@@ -7,51 +7,43 @@ from datetime import datetime
 
 # Configuration
 # Path to the MCTS bridge executable
-# In Docker/deployment: /app/mcts_bridge
-# In local dev: Try multiple possible locations
-if os.path.exists("/app/mcts_bridge"):
-    # Running in Docker/deployment
-    MCTS_BRIDGE_PATH = "/app/mcts_bridge"
-    MODEL_PATH = "/app/model.pt"
-    _project_root = "/app"
-else:
-    # Running locally - search upward from script location to find MCTS bridge
+# Search upward from script location to find MCTS bridge
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_current_dir = _script_dir
+_project_root = None
+MCTS_BRIDGE_PATH = None
+
+# Search upward (max 5 levels) to find MCTS/mcts_bridge
+for _ in range(5):
+    _mcts_bridge_candidate = os.path.join(_current_dir, "MCTS", "mcts_bridge")
+    if os.path.exists(_mcts_bridge_candidate):
+        _project_root = _current_dir
+        MCTS_BRIDGE_PATH = _mcts_bridge_candidate
+        break
+    _parent = os.path.dirname(_current_dir)
+    if _parent == _current_dir:  # Reached filesystem root
+        break
+    _current_dir = _parent
+
+# Fallback: if not found, try common locations
+if MCTS_BRIDGE_PATH is None or not os.path.exists(MCTS_BRIDGE_PATH):
+    # Try ChessMirror root (most common case)
     _script_dir = os.path.dirname(os.path.abspath(__file__))
-    _current_dir = _script_dir
-    _project_root = None
-    MCTS_BRIDGE_PATH = None
-    
-    # Search upward (max 5 levels) to find MCTS/mcts_bridge
-    for _ in range(5):
-        _mcts_bridge_candidate = os.path.join(_current_dir, "MCTS", "mcts_bridge")
-        if os.path.exists(_mcts_bridge_candidate):
-            _project_root = _current_dir
-            MCTS_BRIDGE_PATH = _mcts_bridge_candidate
-            break
-        _parent = os.path.dirname(_current_dir)
-        if _parent == _current_dir:  # Reached filesystem root
-            break
-        _current_dir = _parent
-    
-    # Fallback: if not found, try common locations
-    if MCTS_BRIDGE_PATH is None or not os.path.exists(MCTS_BRIDGE_PATH):
-        # Try ChessMirror root (most common case)
-        _script_dir = os.path.dirname(os.path.abspath(__file__))
-        _possible_root = os.path.dirname(os.path.dirname(_script_dir))  # Go up to ChessMirror
-        _mcts_path = os.path.join(_possible_root, "MCTS", "mcts_bridge")
-        if os.path.exists(_mcts_path):
-            _project_root = _possible_root
-            MCTS_BRIDGE_PATH = _mcts_path
-    
-    # Set model path based on found project root
-    if _project_root:
-        MODEL_PATH = os.path.join(_project_root, "sobe_model.pt")
-    else:
-        # Last resort fallback
-        _script_dir = os.path.dirname(os.path.abspath(__file__))
-        _project_root = os.path.dirname(os.path.dirname(_script_dir))
-        MCTS_BRIDGE_PATH = os.path.join(_project_root, "MCTS", "mcts_bridge")
-        MODEL_PATH = os.path.join(_project_root, "sobe_model.pt")
+    _possible_root = os.path.dirname(os.path.dirname(_script_dir))  # Go up to ChessMirror
+    _mcts_path = os.path.join(_possible_root, "MCTS", "mcts_bridge")
+    if os.path.exists(_mcts_path):
+        _project_root = _possible_root
+        MCTS_BRIDGE_PATH = _mcts_path
+
+# Set model path based on found project root
+if _project_root:
+    MODEL_PATH = os.path.join(_project_root, "sobe_model.pt")
+else:
+    # Last resort fallback
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(_script_dir))
+    MCTS_BRIDGE_PATH = os.path.join(_project_root, "MCTS", "mcts_bridge")
+    MODEL_PATH = os.path.join(_project_root, "sobe_model.pt")
 
 # MCTS parameters
 MAX_ITERATIONS = 20000

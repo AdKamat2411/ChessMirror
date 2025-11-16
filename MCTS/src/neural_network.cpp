@@ -19,8 +19,26 @@ namespace {
 constexpr bool kEnableNNLogging = false;
 }
 
+// Static thread-local buffer initialization
+thread_local std::vector<float> NeuralNetwork::encoding_buffer_(18 * 8 * 8, 0.0f);
+thread_local torch::Tensor NeuralNetwork::input_tensor_buffer_;
+thread_local torch::Tensor NeuralNetwork::batch_tensor_buffer_;
+bool NeuralNetwork::buffers_initialized_ = false;
+
 NeuralNetwork::NeuralNetwork() : loaded_(false) {
     initialize_move_mapping();
+    initialize_buffers();
+}
+
+void NeuralNetwork::initialize_buffers() {
+    if (!buffers_initialized_) {
+        // Pre-allocate input tensor buffer (shape: 1, 18, 8, 8)
+        input_tensor_buffer_ = torch::empty({1, 18, 8, 8}, torch::kFloat32);
+        // Pre-allocate batch tensor buffer (shape: max_batch_size, 18, 8, 8)
+        const int MAX_BATCH_SIZE = 32;  // Match MCTS batch size
+        batch_tensor_buffer_ = torch::empty({MAX_BATCH_SIZE, 18, 8, 8}, torch::kFloat32);
+        buffers_initialized_ = true;
+    }
 }
 
 NeuralNetwork::~NeuralNetwork() {
@@ -182,6 +200,99 @@ std::vector<float> NeuralNetwork::encode_board(const Board& board) const {
     return tensor;
 }
 
+void NeuralNetwork::encode_board_into_buffer(const Board& board, float* buffer) const {
+    // Same logic as encode_board but writes directly to buffer
+    // Clear buffer first (caller should do this, but be safe)
+    std::fill(buffer, buffer + (18 * 8 * 8), 0.0f);
+    
+    // Planes 0-11: Pieces
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            Square sq = Square(Rank(rank), File(file));
+            Piece piece = board.at(sq);
+            
+            if (piece == Piece::NONE) continue;
+            
+            int channel = 0;
+            PieceType pt = piece.type();
+            Color color = piece.color();
+            
+            int piece_idx = 0;
+            if (pt == PieceType::PAWN) piece_idx = 0;
+            else if (pt == PieceType::KNIGHT) piece_idx = 1;
+            else if (pt == PieceType::BISHOP) piece_idx = 2;
+            else if (pt == PieceType::ROOK) piece_idx = 3;
+            else if (pt == PieceType::QUEEN) piece_idx = 4;
+            else if (pt == PieceType::KING) piece_idx = 5;
+            
+            channel = (color == Color::WHITE) ? piece_idx : (piece_idx + 6);
+            
+            int idx64 = rank * 8 + file;
+            int tensor_idx = channel * 64 + idx64;
+            buffer[tensor_idx] = 1.0f;
+        }
+    }
+    
+    // Plane 12: Side to move
+    float side_to_move_value = (board.sideToMove() == Color::WHITE) ? 1.0f : 0.0f;
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int idx64 = rank * 8 + file;
+            int tensor_idx = 12 * 64 + idx64;
+            buffer[tensor_idx] = side_to_move_value;
+        }
+    }
+    
+    // Planes 13-16: Castling rights
+    Board::CastlingRights cr = board.castlingRights();
+    
+    float white_kingside = cr.has(Color::WHITE, Board::CastlingRights::Side::KING_SIDE) ? 1.0f : 0.0f;
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int idx64 = rank * 8 + file;
+            int tensor_idx = 13 * 64 + idx64;
+            buffer[tensor_idx] = white_kingside;
+        }
+    }
+    
+    float white_queenside = cr.has(Color::WHITE, Board::CastlingRights::Side::QUEEN_SIDE) ? 1.0f : 0.0f;
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int idx64 = rank * 8 + file;
+            int tensor_idx = 14 * 64 + idx64;
+            buffer[tensor_idx] = white_queenside;
+        }
+    }
+    
+    float black_kingside = cr.has(Color::BLACK, Board::CastlingRights::Side::KING_SIDE) ? 1.0f : 0.0f;
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int idx64 = rank * 8 + file;
+            int tensor_idx = 15 * 64 + idx64;
+            buffer[tensor_idx] = black_kingside;
+        }
+    }
+    
+    float black_queenside = cr.has(Color::BLACK, Board::CastlingRights::Side::QUEEN_SIDE) ? 1.0f : 0.0f;
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int idx64 = rank * 8 + file;
+            int tensor_idx = 16 * 64 + idx64;
+            buffer[tensor_idx] = black_queenside;
+        }
+    }
+    
+    // Plane 17: En passant target square
+    Square ep_sq = board.enpassantSq();
+    if (ep_sq != Square::NO_SQ && ep_sq.is_valid()) {
+        int ep_rank = ep_sq.rank();
+        int ep_file = ep_sq.file();
+        int idx64 = ep_rank * 8 + ep_file;
+        int tensor_idx = 17 * 64 + idx64;
+        buffer[tensor_idx] = 1.0f;
+    }
+}
+
 bool NeuralNetwork::load_model(const std::string& model_path) {
     // In stub mode, always succeed (don't actually load model)
     if constexpr (USE_NN_STUB) {
@@ -195,9 +306,16 @@ bool NeuralNetwork::load_model(const std::string& model_path) {
         model_ = torch::jit::load(model_path);
         model_.eval();  // Set to evaluation mode
         
+        // Try to move model to GPU if available
+        if (torch::cuda::is_available()) {
+            model_.to(torch::kCUDA);
+            std::cerr << "[NN] Model moved to GPU (CUDA available)" << std::endl;
+        } else {
+            std::cerr << "[NN] Model running on CPU (CUDA not available)" << std::endl;
+        }
+        
         // Verify model loaded successfully
         loaded_ = true;
-        // Model loaded successfully (removed debug output for performance)
         return true;
     }
     catch (const c10::Error& e) {
@@ -208,6 +326,166 @@ bool NeuralNetwork::load_model(const std::string& model_path) {
     catch (const std::exception& e) {
         std::cerr << "Error loading model: " << e.what() << std::endl;
         loaded_ = false;
+        return false;
+    }
+}
+
+bool NeuralNetwork::predict_batch(const std::vector<Board>& boards,
+                                  std::vector<std::map<std::string, double>>& policies_out,
+                                  std::vector<double>& values_out,
+                                  std::vector<double>& raw_values_out) {
+    if (!loaded_) {
+        std::cerr << "ERROR: Neural network model not loaded. Cannot predict." << std::endl;
+        return false;
+    }
+    
+    if (boards.empty()) {
+        return true;
+    }
+    
+    const size_t batch_size = boards.size();
+    policies_out.clear();
+    values_out.clear();
+    raw_values_out.clear();
+    policies_out.resize(batch_size);
+    values_out.resize(batch_size);
+    raw_values_out.resize(batch_size);
+    
+    // Profiling timers
+    auto total_start = std::chrono::high_resolution_clock::now();
+    auto encode_start = total_start;
+    auto inference_start = total_start;
+    auto postprocess_start = total_start;
+    
+    try {
+        // Get batch tensor buffer (resize if needed)
+        auto buffer_start = std::chrono::high_resolution_clock::now();
+        if (batch_tensor_buffer_.size(0) < static_cast<int64_t>(batch_size)) {
+            batch_tensor_buffer_ = torch::empty({static_cast<int64_t>(batch_size), 18, 8, 8}, torch::kFloat32);
+        }
+        
+        // Create a view of the buffer for this batch
+        auto batch_tensor = batch_tensor_buffer_.slice(0, 0, static_cast<int64_t>(batch_size));
+        float* batch_data = batch_tensor.data_ptr<float>();
+        auto buffer_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - buffer_start).count();
+        
+        // Encode all boards into batch tensor (on CPU)
+        encode_start = std::chrono::high_resolution_clock::now();
+        for (size_t i = 0; i < batch_size; i++) {
+            float* board_data = batch_data + i * (18 * 8 * 8);
+            std::fill(board_data, board_data + (18 * 8 * 8), 0.0f);
+            encode_board_into_buffer(boards[i], board_data);
+        }
+        auto encode_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - encode_start).count();
+        
+        // Move tensor to GPU if available (after encoding)
+        if (torch::cuda::is_available()) {
+            batch_tensor = batch_tensor.to(torch::kCUDA);
+        }
+        
+        // Run batch inference
+        inference_start = std::chrono::high_resolution_clock::now();
+        std::vector<torch::jit::IValue> inputs;
+        inputs.push_back(batch_tensor);
+        
+        auto outputs = model_.forward(inputs).toTuple();
+        torch::Tensor policy_logits_batch = outputs->elements()[0].toTensor();  // Shape: (batch_size, 4096)
+        torch::Tensor value_tensor_batch = outputs->elements()[1].toTensor();   // Shape: (batch_size,) or (batch_size, 1)
+        
+        // Squeeze value tensor if it has an extra dimension
+        if (value_tensor_batch.dim() == 2 && value_tensor_batch.size(1) == 1) {
+            value_tensor_batch = value_tensor_batch.squeeze(1);  // Remove dimension 1
+        }
+        
+        // Apply softmax to policy logits
+        torch::Tensor policy_probs_batch = torch::softmax(policy_logits_batch, 1);  // Shape: (batch_size, 4096)
+        auto inference_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - inference_start).count();
+        
+        // Extract results for each board
+        postprocess_start = std::chrono::high_resolution_clock::now();
+        auto policy_accessor = policy_probs_batch.accessor<float, 2>();
+        auto value_accessor = value_tensor_batch.accessor<float, 1>();
+        
+        for (size_t i = 0; i < batch_size; i++) {
+            // Extract value
+            float model_value = value_accessor[i];
+            raw_values_out[i] = static_cast<double>(model_value);
+            values_out[i] = static_cast<double>(model_value);
+            
+            // Extract policy for this board
+            Movelist legal_moves;
+            movegen::legalmoves(legal_moves, boards[i]);
+            
+            if (legal_moves.empty()) {
+                std::cerr << "ERROR: No legal moves in position " << i << ". Cannot predict policy." << std::endl;
+                continue;
+            }
+            
+            // Sum probabilities for legal moves (for normalization)
+            double total_prob = 0.0;
+            for (const Move& move : legal_moves) {
+                int policy_idx = move_to_policy_index(move);
+                if (policy_idx >= 0 && policy_idx < 4096) {
+                    total_prob += policy_accessor[i][policy_idx];
+                }
+            }
+            
+            // Normalize and store policy
+            if (total_prob > 0.0) {
+                for (const Move& move : legal_moves) {
+                    int policy_idx = move_to_policy_index(move);
+                    if (policy_idx >= 0 && policy_idx < 4096) {
+                        std::string move_uci = static_cast<std::string>(move.from()) + static_cast<std::string>(move.to());
+                        if (move.typeOf() == Move::PROMOTION) {
+                            PieceType pt = move.promotionType();
+                            char promo = 'q';
+                            if (pt == PieceType::KNIGHT) promo = 'n';
+                            else if (pt == PieceType::BISHOP) promo = 'b';
+                            else if (pt == PieceType::ROOK) promo = 'r';
+                            move_uci += promo;
+                        }
+                        double prob = policy_accessor[i][policy_idx] / total_prob;
+                        policies_out[i][move_uci] = prob;
+                    }
+                }
+            } else {
+                // Fallback: uniform distribution
+                double uniform_prob = 1.0 / legal_moves.size();
+                for (const Move& move : legal_moves) {
+                    std::string move_uci = static_cast<std::string>(move.from()) + static_cast<std::string>(move.to());
+                    if (move.typeOf() == Move::PROMOTION) {
+                        PieceType pt = move.promotionType();
+                        char promo = 'q';
+                        if (pt == PieceType::KNIGHT) promo = 'n';
+                        else if (pt == PieceType::BISHOP) promo = 'b';
+                        else if (pt == PieceType::ROOK) promo = 'r';
+                        move_uci += promo;
+                    }
+                    policies_out[i][move_uci] = uniform_prob;
+                }
+            }
+        }
+        auto postprocess_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - postprocess_start).count();
+        auto total_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - total_start).count();
+        
+        // Print profiling info
+        std::cerr << "[NN PROFILE] Batch size: " << batch_size 
+                  << " | Total: " << std::fixed << std::setprecision(3) << total_time * 1000 << "ms"
+                  << " | Buffer: " << buffer_time * 1000 << "ms"
+                  << " | Encode: " << encode_time * 1000 << "ms"
+                  << " | Inference: " << inference_time * 1000 << "ms"
+                  << " | Postprocess: " << postprocess_time * 1000 << "ms"
+                  << " | Per position: " << (total_time / batch_size) * 1000 << "ms"
+                  << std::endl;
+        
+        return true;
+    }
+    catch (const c10::Error& e) {
+        std::cerr << "Error during batch inference: " << e.what() << std::endl;
+        return false;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error during batch inference: " << e.what() << std::endl;
         return false;
     }
 }
@@ -326,32 +604,32 @@ bool NeuralNetwork::predict(const Board& board,
     }
     
     try {
-        // 1. Encode board to tensor
-        std::vector<float> board_tensor_data = encode_board(board);
+        // 1. Encode board directly into pre-allocated tensor buffer (optimization)
+        // Get direct pointer to tensor data
+        float* tensor_data = input_tensor_buffer_.data_ptr<float>();
         
-        // Create torch tensor: shape (1, 18, 8, 8) - batch_size=1, channels=18, height=8, width=8
-        torch::Tensor input_tensor = torch::from_blob(
-            board_tensor_data.data(), 
-            {1, 18, 8, 8}, 
-            torch::kFloat32
-        ).clone();  // clone to ensure data persists
+        // Clear buffer first
+        std::fill(tensor_data, tensor_data + (18 * 8 * 8), 0.0f);
         
-        // 2. Run model inference
+        // Encode board directly into tensor buffer (no intermediate copies)
+        encode_board_into_buffer(board, tensor_data);
+        
+        // 3. Run model inference using pre-allocated buffer
         std::vector<torch::jit::IValue> inputs;
-        inputs.push_back(input_tensor);
+        inputs.push_back(input_tensor_buffer_);
         
         auto outputs = model_.forward(inputs).toTuple();
         torch::Tensor policy_logits = outputs->elements()[0].toTensor();  // Shape: (1, 4096)
         torch::Tensor value_tensor = outputs->elements()[1].toTensor();   // Shape: (1,)
         
-               // 3. Extract value (model already outputs values in [-1, +1] range)
+               // 4. Extract value (model already outputs values in [-1, +1] range)
                float model_value = value_tensor.item<float>();  // Value from model (already in [-1, +1] range)
                
                // Model already outputs tanh'd values, so raw and final are the same
                raw_value_out = static_cast<double>(model_value);
                value_out = static_cast<double>(model_value);
         
-        // 4. Extract policy and map to legal moves
+        // 5. Extract policy and map to legal moves
         policy_out.clear();
         
         // Get legal moves

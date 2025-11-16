@@ -1,0 +1,60 @@
+[MCTS] Bridge path: /Users/adityakamat/Desktop/Projects/ChessMirror/MCTS/mcts_bridge
+[MCTS] Model path: /Users/adityakamat/Desktop/Projects/ChessMirror/chessnet_new_ts.pt
+[MCTS] Bridge exists: True
+[MCTS] Model exists: True
+[MCTS] FEN: 8/8/2Rk1K2/8/4B3/8/8/8 b - - 16 110
+[MCTS] Calling bridge with: /Users/adityakamat/Desktop/Projects/ChessMirror/MCTS/mcts_bridge /Users/adityakamat/Desktop/Projects/ChessMirror/chessnet_new_ts.pt 8/8/2Rk1K2/8/4B3/8/8/8 b - - 16 110...
+[MCTS] Bridge stderr: Successfully loaded model from: /Users/adityakamat/Desktop/Projects/ChessMirror/chessnet_new_ts.pt
+Successfully loaded model from: /Users/adityakamat/Desktop/Projects/ChessMirror/chessnet_new_ts.pt
+___ DEBUG ______________________
+Growing tree...
+Growing tree...
+[DEBUG] ===== ROOT NODE EVALUATED =====
+[DEBUG] NN Value (from root's perspective): -1
+[DEBUG] Policy map size: 1 entries
+[DEBUG]   d6d7: 1
+[DEBUG] ================================
+Early stopping: Made 164 iterations in 3 seconds.
+Finished in 3 seconds.
+Tree size: 163
+________________________________
+
+[MCTS] Bridge returned: d6d7
+[MCTS] Selected move: d6d7
+
+[Event "?"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "1-0"]
+[Link "https://www.chess.com/play/computer"]
+
+1. e4 {1.e4 is the only way to start the game $1} 1... d5 {I don't like when I
+have to solve these types of problems.} 2. exd5 {The first of many captures that
+lead to an attack on your king $1} 2... e5 3. dxe6 {I wonder how many pieces I can
+give away before I can attack your king $2} 3... fxe6 4. Qf3 Qd5 5. Be2 Nc6 6. h3
+Nge7 7. Nc3 {I believe you are going to pay for not respecting my attack $1} 7...
+Qxf3 {Hey $1 I need my queen to attack you $1} 8. Nxf3 {No queen for you makes my
+attacking chances more attractive :)} 8... Ng6 9. a3 Bd6 10. O-O e5 11. g3 Nd4
+12. Nxd4 Bxh3 13. Ndb5 Nh4 14. Nxd6+ {I love attacking the king $1} 14... cxd6 15.
+gxh4 a6 16. Re1 {It looks like you have underestimated my attack $1} 16... Bd7 17.
+Bd1 Be6 18. Kg2 d5 19. Nxd5 Bxd5+ {Hey $1 I'm the one who is supposed to be
+attacking $1} 20. f3 Bf7 21. d4 Rc8 22. f4 e4 23. Rxe4+ Kd7 24. b4 Rc3 25. f5 Rg8
+26. Be3 Bd5 27. Bf3 Bxe4 28. Bxe4 Rxe3 29. Bd5 Rd8 30. Kg1 Ke7 31. Bg2 Rc8 32.
+Bd5 Rcc3 33. Rc1 Kd6 34. Bg8 Rxa3 35. Rd1 h6 36. Kf1 Ra4 37. Rd3 Re8 38. Bf7 Rd8
+39. c3 Rf8 40. Be6 b5 41. Rf3 h5 42. Rh3 Ra3 43. Rd3 Re8 44. Re3 Re7 45. Re1 a5
+46. Re4 a4 47. Re2 Ra7 48. Kg1 Ra8 49. Kf2 Rb8 50. Re4 Rxc3 51. Re2 Rb7 {I think
+I have given away too much material $1} 52. Re5 Ra3 53. Rd5+ Kc7 54. Bg8 Rh3 55.
+Rc5+ Kb8 56. Be6 Rb6 57. Rc8+ Kb7 58. Kg2 Rxh4 59. Kf3 a3 60. Rc2 Ka7 61. Rc7+
+Kb8 62. Rc8+ Kb7 63. Kg3 g5 64. Rg8 Rd6 65. Rxg5 Rdxd4 66. f6 Rhf4 67. Rxb5+ Ka7
+68. Ra5+ Kb6 69. Rxa3 h4+ 70. Kg2 Kb5 71. Rh3 Kxb4 72. f7 Rd6 73. Rb3+ Kc5 74.
+Kh3 Rf6 75. f8=Q {Another queen should help me attack your king $1} 75... Rxf8 76.
+Bg4 Rfd8 77. Kxh4 Rd5 78. Rb1 R8d6 79. Rb2 Rh6+ 80. Kg3 Kc4 81. Be2+ Kc5 82.
+Rc2+ Kb6 83. Rb2+ Kc5 84. Rb5+ Kd4 85. Rb3 Ke5 86. Re3+ Kf6 87. Kf4 Rg5 88. Bd3
+Rg1 89. Ba6 Kf7 90. Bc4+ Kg6 91. Ba2 Kf6 92. Re4 Rf1+ 93. Ke3 Ra1 94. Re6+ Kf7
+95. Rxh6+ Ke7 96. Bd5 Rf1 97. Rh7+ Kd6 98. Be4 Re1+ 99. Kf4 Rc1 100. Kf5 Kc5
+101. Rc7+ Kd6 102. Rxc1 Kd7 103. Kf6 Kd8 104. Kf7 {Ha ha $1 Who needs material
+when you have mate $2} 104... Kd7 105. Ba8 Kd8 106. Be4 Kd7 107. Rc4 Kd6 108. Kf6
+Kd7 109. Rc3 Kd6 110. Rc6+ Kd7 111. Kf5 1-0

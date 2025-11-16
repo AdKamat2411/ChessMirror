@@ -9,8 +9,9 @@
 #include <map>
 #include <string>
 
-// Forward declaration
+// Forward declarations
 class NeuralNetwork;
+class Chess_state;
 
 
 #define STARTING_NUMBER_OF_CHILDREN 32   // expected number so that we can preallocate this many pointers
@@ -42,6 +43,7 @@ class MCTS_node {
     double nn_value;                    // Value from NN (in [-1, +1] range, model already outputs tanh'd values)
     double raw_nn_value;                // Raw value from NN (same as nn_value, model already outputs tanh'd values)
     bool has_nn_evaluation;            // Whether this node has been evaluated by NN
+    Chess_state *chess_state_cache_;    // Cached Chess_state* cast result (optimization)
     void backpropagate(double w, int n);
 public:
     MCTS_node(MCTS_node *parent, MCTS_state *state, const MCTS_move *move);
@@ -53,6 +55,7 @@ public:
            MCTS_node *expand();
            double evaluate(NeuralNetwork* nn);
            void rollout();  // Legacy fallback (used when NN unavailable)
+           Chess_state* get_chess_state() const { return chess_state_cache_; }  // Get cached chess state
     MCTS_node *select_best_child(double cpuct) const;  // cpuct is the exploration constant
     MCTS_node *advance_tree(const MCTS_move *m);
     const MCTS_state *get_current_state() const;

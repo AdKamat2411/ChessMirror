@@ -23,8 +23,15 @@ private:
     std::map<int, Move> policy_to_move_;
     std::map<Move, int> move_to_policy_;
     
+    // Pre-allocated buffers for performance (thread-local to avoid race conditions)
+    static thread_local std::vector<float> encoding_buffer_;
+    static thread_local torch::Tensor input_tensor_buffer_;
+    static thread_local torch::Tensor batch_tensor_buffer_;  // For batch inference
+    static bool buffers_initialized_;
+    
     void initialize_move_mapping();
     int move_to_policy_index(const Move& move) const;
+    void initialize_buffers();
     
 public:
     NeuralNetwork();
@@ -38,11 +45,18 @@ public:
     bool load_model(const std::string& model_path);
     
     /**
-     * Encode chess board to 12-channel tensor
+     * Encode chess board to 18-channel tensor
      * @param board Chess board
-     * @return Vector of floats (12 * 8 * 8 = 768 elements)
+     * @return Vector of floats (18 * 8 * 8 = 1152 elements)
      */
     std::vector<float> encode_board(const Board& board) const;
+    
+    /**
+     * Encode chess board directly into pre-allocated buffer (optimized version)
+     * @param board Chess board
+     * @param buffer Output buffer (must be at least 18 * 8 * 8 floats)
+     */
+    void encode_board_into_buffer(const Board& board, float* buffer) const;
     
     /**
      * Run inference on board position
@@ -55,6 +69,19 @@ public:
                 std::map<std::string, double>& policy_out,
                 double& value_out,
                 double& raw_value_out);  // Raw value from model (same as value_out, model already outputs tanh'd values)
+    
+    /**
+     * Batch inference for multiple positions (optimized)
+     * @param boards Vector of chess boards to evaluate
+     * @param policies_out Output: vector of policy maps (one per board)
+     * @param values_out Output: vector of values (one per board)
+     * @param raw_values_out Output: vector of raw values (one per board)
+     * @return true if successful
+     */
+    bool predict_batch(const std::vector<Board>& boards,
+                      std::vector<std::map<std::string, double>>& policies_out,
+                      std::vector<double>& values_out,
+                      std::vector<double>& raw_values_out);
     
     bool is_loaded() const { return loaded_; }
 };
